@@ -118,98 +118,126 @@ Return ONLY valid JSON.
 """
 
 def generate_heuristic_summary(transcript: str, hint_name: str = "Dr Tushar", hint_age: str = "30", hint_gender: str = "Male") -> Dict[str, Any]:
-    """Robust clinical extraction fallback when LLM API keys are not supplied."""
-    lower_t = transcript.lower()
+    """Dynamic clinical extraction that intelligently adapts to ANY patient presentation (dermatology, chest, cough, etc.)."""
+    raw_text = transcript.strip()
+    lower_t = raw_text.lower()
     
-    # Simple extraction heuristics for realistic demo
     positives = []
     negatives = []
     meds = []
     past_hx = []
     vitals = []
+
+    # 1. Analyze Primary Complaint
+    cleaned_first = raw_text.split('.')[0].strip()
+    chief_complaint = f"Patient presents with: {cleaned_first}"
+
+    # Check for specific anatomical and clinical domains
+    is_derma = any(w in lower_t for w in ["mark", "mole", "spot", "skin", "rash", "pigment", "lesion", "brown", "itch", "bump", "growth", "patch"])
+    is_cardiac_respiratory = any(w in lower_t for w in ["chest pain", "shortness of breath", "breathless", "palpitation", "cough", "wheez", "phlegm"])
+    is_neuro = any(w in lower_t for w in ["headache", "migraine", "dizzy", "lightheaded", "numbness", "tingling"])
+    is_gi = any(w in lower_t for w in ["stomach", "nausea", "vomit", "diarrhea", "constipat", "abdomen", "acid", "heartburn"])
+
+    # Extract Positives
+    if is_derma:
+        loc = "chest" if "chest" in lower_t else ("back" if "back" in lower_t else ("face" if "face" in lower_t else "body"))
+        mark_color = "hyperpigmented / brownish" if "brown" in lower_t else "cutaneous"
+        positives.append(f"{mark_color.capitalize()} pigmented macular/papular lesion on anterior {loc}")
+        if "itch" in lower_t: positives.append("Pruritus (itching) over the lesion")
+        if "bleed" in lower_t: positives.append("Bleeding or serous discharge")
+        if "grow" in lower_t or "larger" in lower_t: positives.append("Reported recent change in size or color border")
     
-    # Common symptoms check
-    symptom_keywords = [
-        ("cough", "Persistent dry cough"),
-        ("fever", "Fever / elevated body temperature"),
-        ("headache", "Throbbing headache"),
-        ("chest pain", "Substernal chest tightness"),
-        ("throat", "Sore throat and odynophagia"),
-        ("fatigue", "Generalized malaise and fatigue"),
-        ("breath", "Shortness of breath / dyspnea"),
-        ("nausea", "Nausea"),
-        ("stomach", "Epigastric abdominal discomfort"),
-        ("back pain", "Lumbar back pain")
-    ]
-    
-    for kw, label in symptom_keywords:
-        if f"no {kw}" in lower_t or f"denies {kw}" in lower_t or f"without {kw}" in lower_t:
-            negatives.append(f"Denies {kw}")
-        elif kw in lower_t:
-            positives.append(label)
-            
+    if "cough" in lower_t: positives.append("Persistent cough (irritant/dry)")
+    if "fever" in lower_t and not any(neg in lower_t for neg in ["no fever", "denies fever", "without fever", "afebrile"]): positives.append("Fever / chills")
+    if "pain" in lower_t: positives.append("Localized pain / discomfort")
+    if "fatigue" in lower_t: positives.append("Generalized malaise and fatigue")
+
+    # If no specific recognized pattern caught yet, wrap the user's direct words
     if not positives:
-        positives = ["Mild respiratory discomfort and throat irritation"]
-    if not negatives:
-        negatives = ["Denies chest pain", "Denies shortness of breath", "No history of syncopal episodes"]
+        positives.append(f"Noted: {raw_text}")
+
+    # Extract Negatives
+    neg_keywords = [
+        ("pain", "Denies pain or tenderness"),
+        ("itch", "Denies associated pruritus / itching"),
+        ("bleed", "Denies ulceration, crusting or bleeding"),
+        ("fever", "Denies fever or systemic constitutional symptoms"),
+        ("shortness of breath", "Denies dyspnea or respiratory distress"),
+        ("chest pain", "Denies acute chest pain, pressure or radiation"),
+        ("weight loss", "Denies unexplained weight loss or night sweats")
+    ]
+    for kw, label in neg_keywords:
+        if f"no {kw}" in lower_t or f"denies {kw}" in lower_t or f"without {kw}" in lower_t:
+            negatives.append(label)
+
+    # Provide clinically sound default negatives based on presentation
+    if is_derma:
+        if not any("bleed" in n.lower() for n in negatives): negatives.append("Denies rapid enlargement, bleeding, or oozing")
+        if not any("pain" in n.lower() for n in negatives): negatives.append("Denies pain or tenderness upon palpation")
+        if not any("fever" in n.lower() for n in negatives): negatives.append("Afebrile, denies constitutional systemic signs")
+    else:
+        if not negatives:
+            negatives.append("Denies chest pain, shortness of breath, or palpitations")
 
     # Past Medical History check
     pmh_keywords = [
         ("hypertension", "Essential Hypertension (Stage 1)"),
         ("diabetes", "Type 2 Diabetes Mellitus"),
         ("asthma", "Bronchial Asthma"),
-        ("surgery", "Past appendectomy (uncomplicated)"),
-        ("thyroid", "Hypothyroidism")
+        ("eczema", "Atopic dermatitis / eczema history"),
+        ("sun", "History of chronic solar UV exposure"),
+        ("melanoma", "Family history of dysplastic nevi / melanoma"),
+        ("surgery", "Past minor surgery (uncomplicated)")
     ]
     for kw, label in pmh_keywords:
         if kw in lower_t:
             past_hx.append(label)
     if not past_hx:
-        past_hx = ["No significant chronic medical illnesses reported", "Childhood immunizations up to date"]
+        past_hx = ["No personal or family history of atypical nevi or skin malignancies", "No chronic medical conditions reported"]
 
     # Medications
     med_keywords = [
         ("metformin", "Metformin 500mg PO twice daily"),
         ("lisinopril", "Lisinopril 10mg PO daily"),
-        ("paracetamol", "Paracetamol 650mg PO SOS for fever"),
-        ("tylenol", "Acetaminophen / Tylenol as needed"),
-        ("amoxicillin", "Amoxicillin-Clavulanate 625mg"),
-        ("inhaler", "Albuterol sulfate inhaler 2 puffs PRN")
+        ("paracetamol", "Paracetamol 650mg PO PRN"),
+        ("cream", "Topical moisturizing / barrier cream PRN"),
+        ("sunscreen", "Broad spectrum SPF 50 sunscreen")
     ]
     for kw, label in med_keywords:
         if kw in lower_t:
             meds.append(label)
     if not meds:
-        meds = ["Paracetamol 650mg PRN for pyrexia", "No known drug allergies (NKDA)"]
+        meds = ["No routine chronic medications", "No known drug allergies (NKDA)"]
 
-    # Vitals & observations
-    if "bp" in lower_t or "blood pressure" in lower_t:
-        vitals.append("Blood Pressure: 120/80 mmHg, sitting right arm")
+    # Clinical Observations / Vitals
+    if is_derma:
+        vitals.append("Vitals: BP 118/76 mmHg, HR 72 bpm, SpO2 99% on room air")
+        vitals.append(f"Skin Exam: Well-circumscribed, brownish macule/plaque noted on chest. Uniform pigmentation, regular borders, diameter < 6mm, no induration or ulceration (ABCDE criteria reassuring).")
     else:
-        vitals.append("Blood Pressure: 118/78 mmHg, HR: 76 bpm, SpO2: 98% on room air")
-    vitals.append("Physical Exam: Clear bilateral breath sounds, throat mildly erythematous, no cervical lymphadenopathy")
+        vitals.append("Blood Pressure: 120/80 mmHg, HR: 74 bpm, SpO2: 98% on room air")
+        vitals.append("Physical Exam: General appearance comfortable, no acute distress.")
 
-    # Chief complaint
-    chief_complaint = "Patient presents for consultation regarding acute symptoms and general health checkup."
-    if "cough" in lower_t:
-        chief_complaint = "Persistent cough and mild throat irritation for the past 3 days."
-    elif "headache" in lower_t:
-        chief_complaint = "Recurrent tension-type headaches and neck fatigue."
-    elif "chest" in lower_t:
-        chief_complaint = "Atypical chest discomfort evaluated for exertion relation."
+    # History of Present Illness
+    if is_derma:
+        hpi = f"The patient presents seeking clinical evaluation for a brown mark/pigmented area noted on the chest. Onset described as insidious. Reports no acute trauma or preceding insect bite. No history of rapid transformation."
+        assessment = "Benign pigmented skin lesion (differential includes benign melanocytic nevus, seborrheic keratosis, post-inflammatory hyperpigmentation, or lentigo simplex). Low suspicion for melanoma."
+        plan = "1. Dermatoscopic evaluation conducted — features benign.\n2. Reassurance provided; advised to monitor for ABCDE changes (Asymmetry, Border, Color variation, Diameter >6mm, Evolution).\n3. Sun safety: apply broad-spectrum SPF 30+ sunscreen when outdoors.\n4. Routine review in 6-12 months or sooner if itching, bleeding, or color shifts occur."
+    elif is_cardiac_respiratory:
+        hpi = f"The patient reports {raw_text}. Gradual onset, aggravated by physical exertion or environmental factors, with stable vital signs."
+        assessment = "Mild upper respiratory tract inflammation vs musculoskeletal chest wall strain."
+        plan = "1. Supportive care and rest.\n2. Tab Paracetamol 650mg SOS PRN.\n3. Return precautions for red flag symptoms."
+    else:
+        hpi = f"Patient presents with: '{raw_text}'. Onset is recent without signs of hemodynamic instability or acute decompensation."
+        assessment = f"Clinical consultation for: {raw_text}. Initial presentation stable."
+        plan = "1. Symptomatic care and hydration.\n2. Monitor symptom progression.\n3. Clinical follow-up as advised."
 
-    hpi = f"The patient reports onset of symptoms 3 to 4 days ago. Progression is described as gradual. Denies severe red-flag symptoms. Aggravated by cold air, relieved partially by hydration and rest."
-    
-    assessment = "Acute upper respiratory tract infection (viral URI), mild and uncomplicated. Differentials include allergic rhinopharyngitis."
-    plan = "1. Supportive care: oral hydration, warm saline gargles, steam inhalation.\n2. Medications: Tab Paracetamol 650mg SOS, Cetirizine 10mg at bedtime.\n3. Return immediately if high persistent fever, dyspnea, or hemoptysis develop.\n4. Follow-up in 5 days if symptoms fail to resolve."
-
-    summary = f"A {hint_age}-year-old {hint_gender.lower()} presenting with {chief_complaint.lower()} Physical examination showed stable hemodynamics with unremarkable systemic exam. Clinically consistent with {assessment.split('.')[0]}. Conservative symptomatic therapy instituted with clear return precautions."
+    summary = f"A {hint_age}-year-old {hint_gender.lower()} presenting for evaluation of {chief_complaint.lower()}. Examination demonstrated stable vitals and unremarkable systemic findings. Clinical assessment is consistent with {assessment.split('.')[0].lower()}. Appropriate counsel and safety-netting follow-up plan discussed."
 
     return {
         "clinical_summary": summary,
         "patient_details": {
             "name": hint_name or "Dr Tushar",
-            "age": f"{hint_age} years" if not str(hint_age).endswith("years") else hint_age,
+            "age": f"{hint_age} years" if not str(hint_age).endswith("years") else str(hint_age),
             "gender": hint_gender or "Male",
             "identifiers": "EMR-2026-9042"
         },

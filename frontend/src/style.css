@@ -149,14 +149,16 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
   max-width: 1600px;
-  margin: 1.25rem auto;
-  padding: 0 1.5rem 2rem;
-  min-height: calc(100vh - 85px);
+  margin: 0 auto;
+  padding: 1rem 1.5rem 1rem;
+  height: calc(100vh - 65px);
+  box-sizing: border-box;
 }
 
 @media (max-width: 1024px) {
   .main-workspace {
     grid-template-columns: 1fr;
+    height: auto;
   }
 }
 
@@ -168,6 +170,8 @@ body {
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
+  height: 100%;
+  max-height: 100%;
   overflow: hidden;
 }
 
@@ -367,11 +371,11 @@ body {
 /* Transcript Area */
 .transcript-container {
   flex: 1;
-  padding: 1.4rem;
+  padding: 1.2rem 1.4rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  min-height: 400px;
+  gap: 0.85rem;
+  min-height: 0;
   background: #ffffff;
   overflow-y: auto;
 }
@@ -468,11 +472,14 @@ body {
   color: #0f172a;
 }
 
-/* Process Button Bar */
+/* Process & Action Button Bar - Always visible at bottom of panel */
 .panel-footer-action {
-  padding: 1rem 1.4rem;
+  padding: 0.85rem 1.4rem;
   border-top: 1px solid var(--border);
-  background: #f8fafc;
+  background: #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.03);
+  z-index: 10;
 }
 
 .btn-process {
@@ -532,11 +539,12 @@ body {
 /* Structured Medical Output Sections */
 .summary-results-container {
   flex: 1;
-  padding: 1.4rem;
+  padding: 1.2rem 1.4rem;
   overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.1rem;
   background: #fbfcfe;
 }
 

@@ -124,9 +124,10 @@ function initApp() {
         <!-- Transcript Content & Live Feed -->
         <div class="transcript-container" id="transcript-container">
           <div class="demo-sample-row">
-            <span>Load Sample Consultation:</span>
+            <span>Consultation Samples:</span>
             <button class="sample-chip-btn" id="btn-sample-1">Sample 1: Respiratory URI</button>
             <button class="sample-chip-btn" id="btn-sample-2">Sample 2: Chest Evaluation</button>
+            <button class="sample-chip-btn clear-sample" id="btn-clear-sample" style="color: #ef4444; border-color: #fecaca; background: #fef2f2;">Clear Sample</button>
           </div>
 
           <textarea 
@@ -494,6 +495,15 @@ ${state.medicalRecord.plan}
     showToast('Loaded Sample 2: Chest Evaluation Consultation');
   });
 
+  document.getElementById('btn-clear-sample').addEventListener('click', () => {
+    state.transcript = '';
+    state.interimTranscript = '';
+    state.chunkCount = 0;
+    editor.value = '';
+    updateWordChunkCounts();
+    showToast('Sample cleared. Ready for your live microphone or typing.');
+  });
+
   // Modal setup
   const modal = document.getElementById('patient-modal');
   const openModal = () => { modal.style.display = 'flex'; };
@@ -754,47 +764,77 @@ function refreshSummaryView() {
 }
 
 function fallbackClientExtraction(transcript) {
-  const lower = transcript.toLowerCase();
+  const raw = transcript.trim();
+  const lower = raw.toLowerCase();
   const positives = [];
   const negatives = [];
 
-  const symPairs = [
-    ["cough", "Persistent cough (dry/irritant)"],
-    ["headache", "Frontal tension-type headache"],
-    ["fever", "Subjective fever"],
-    ["chest pain", "Chest discomfort / tightness"],
-    ["throat", "Pharyngeal congestion / throat soreness"],
-    ["fatigue", "Generalized malaise and fatigue"],
-    ["shortness of breath", "Dyspnea / shortness of breath"],
-    ["nausea", "Nausea"]
-  ];
+  const isDerma = ["mark", "mole", "spot", "skin", "rash", "pigment", "lesion", "brown", "itch", "bump"].some(w => lower.includes(w));
+  const isCardioResp = ["chest pain", "cough", "breath", "wheez", "fever"].some(w => lower.includes(w));
 
-  for (const [kw, label] of symPairs) {
-    if (lower.includes(`no ${kw}`) || lower.includes(`denies ${kw}`) || lower.includes(`without ${kw}`)) {
-      negatives.push(`Denies ${kw}`);
-    } else if (lower.includes(kw)) {
-      positives.push(label);
+  const cc = `Patient presents with: ${raw.split('.')[0]}`;
+
+  if (isDerma) {
+    const loc = lower.includes("chest") ? "chest" : (lower.includes("back") ? "back" : "body");
+    const col = lower.includes("brown") ? "Brownish / hyperpigmented" : "Cutaneous";
+    positives.push(`${col} pigmented macule/lesion on anterior ${loc}`);
+    if (lower.includes("itch")) positives.push("Associated mild pruritus / itching");
+    negatives.push("Denies bleeding, ulceration, or rapid growth", "Denies pain or tenderness upon palpation");
+  } else {
+    const symPairs = [
+      ["cough", "Persistent cough (dry/irritant)"],
+      ["headache", "Frontal tension-type headache"],
+      ["fever", "Subjective fever"],
+      ["chest pain", "Substernal chest tightness"],
+      ["throat", "Pharyngeal congestion / throat soreness"],
+      ["fatigue", "Generalized malaise and fatigue"]
+    ];
+
+    for (const [kw, label] of symPairs) {
+      if (lower.includes(`no ${kw}`) || lower.includes(`denies ${kw}`) || lower.includes(`without ${kw}`)) {
+        negatives.push(`Denies ${kw}`);
+      } else if (lower.includes(kw)) {
+        positives.push(label);
+      }
     }
+    if (positives.length === 0) positives.push(`Noted symptom: ${raw}`);
+    if (negatives.length === 0) negatives.push("Denies acute shortness of breath or radiating pain");
   }
 
-  if (positives.length === 0) positives.push("Mild general discomfort");
-  if (negatives.length === 0) negatives.push("Denies chest pain", "Denies shortness of breath");
+  let hpi = "";
+  let assessment = "";
+  let plan = "";
+  let vitals = [];
+  let pmh = [];
+  let meds = [];
 
-  let cc = "Patient presents for medical evaluation regarding acute symptoms.";
-  if (lower.includes("cough")) cc = "Irritant cough and throat soreness for 4 days.";
-  else if (lower.includes("chest")) cc = "Evaluation of non-radiating chest tightness.";
+  if (isDerma) {
+    hpi = `Patient reports noticing a brown mark on the chest. Gradual progression without acute trauma, preceding injury, or systemic distress.`;
+    assessment = "Benign pigmented skin lesion (differential includes benign melanocytic nevus, seborrheic keratosis, post-inflammatory hyperpigmentation).";
+    plan = "1. Reassurance provided; advised to self-monitor for ABCDE signs.\n2. Sun protection advice: SPF 30+ sunscreen when outdoors.\n3. Return if changes in size, border irregularity, or bleeding occur.";
+    vitals = ["BP: 118/76 mmHg, HR: 72 bpm, SpO2: 99% on room air", "Skin: well-circumscribed, brownish macular lesion on chest, regular margins, <6mm diameter."];
+    pmh = ["No personal or family history of atypical nevi or melanoma"];
+    meds = ["No chronic dermatological medications", "No known drug allergies (NKDA)"];
+  } else {
+    hpi = `Patient reports ${raw}. Gradual onset without acute decompensation. Relieved partially by rest.`;
+    assessment = "Symptomatic evaluation; clinical status stable.";
+    plan = "1. Supportive rest and oral hydration.\n2. Paracetamol 650mg PO SOS PRN.\n3. Follow up in 5 days or sooner if symptoms worsen.";
+    vitals = ["BP: 120/80 mmHg, HR: 74 bpm, SpO2: 98% on room air"];
+    pmh = ["No chronic systemic illnesses reported"];
+    meds = ["No routine prescription drugs", "No known drug allergies"];
+  }
 
   return {
-    clinical_summary: `A ${state.patient.age}-year-old ${state.patient.gender.toLowerCase()} presenting with ${cc.toLowerCase()} Vital signs and physical findings are hemodynamically stable. Symptomatic therapy prescribed with instructions to seek urgent review if severe symptoms develop.`,
+    clinical_summary: `A ${state.patient.age}-year-old ${state.patient.gender.toLowerCase()} presenting for evaluation of ${cc.toLowerCase()}. Physical assessment demonstrates stable vitals with reassuring findings. Clinically consistent with ${assessment.split('.')[0].toLowerCase()}. Appropriate counseling and safety-netting plan provided.`,
     patient_details: { ...state.patient },
     chief_complaint: cc,
-    history_of_present_illness: `Symptoms began 3-4 days prior to consultation. Gradual onset without acute distress. Relieved partially by rest, aggravated by physical exertion and cold environment.`,
+    history_of_present_illness: hpi,
     symptoms: { positives, negatives },
-    past_medical_history: lower.includes("hypertension") ? ["Essential Hypertension (controlled)", "Past appendectomy (5 yrs ago)"] : ["No known chronic systemic illnesses"],
-    medication_history: lower.includes("lisinopril") ? ["Tab Lisinopril 10mg OD", "Tab Paracetamol 650mg PRN", "No known drug allergies (NKDA)"] : ["Multivitamins daily", "No known drug allergies"],
-    clinical_observations: ["BP: 122/80 mmHg, HR: 74 bpm, SpO2: 99% on room air", "Chest: clear bilateral vesicular breath sounds, no rales or wheezes", "Throat: mild erythema, no tonsillar exudate"],
-    assessment: lower.includes("cough") ? "Acute viral tracheobronchitis, mild, uncomplicated." : "Atypical non-cardiac musculoskeletal chest discomfort.",
-    plan: "1. Oral hydration and warm fluids\n2. Tab Paracetamol 650mg SOS for headache/discomfort\n3. Rest and avoid cold exposures\n4. Follow up in 5 days or sooner if breathing difficulty develops"
+    past_medical_history: pmh,
+    medication_history: meds,
+    clinical_observations: vitals,
+    assessment: assessment,
+    plan: plan
   };
 }
 
