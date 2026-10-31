@@ -25,13 +25,21 @@ A full-stack, real-time medical transcription and clinical information extractio
    - **History of Present Illness (HPI)**: Onset, duration, progression, aggravating/relieving factors.
    - **Symptoms**: Discrete lists with **Reported Positives** and **Stated Negatives** strictly separated.
    - **Assessment & Diagnosis**: Provisional diagnosis and differentials.
-   - **Medication History**: Active medications, dosages, and drug allergies.
+   - **Medication History**: Active home medications, dosages, and drug allergies prior to visit.
+   - **Prescription Medicine (Rx)**: Structured list of newly prescribed or renewed medicines with dosage, frequency, course duration, and patient administration directions.
    - **Examinations & Tests (Observations)**: Physical findings and vitals stated during consultation.
    - **Past Medical History**: Chronic conditions, surgeries, and hospitalizations.
    - **Plan & Follow-Up**: Prescriptions, lab orders, lifestyle guidance, and return precautions.
 
-4. **Prescription & EHR Export**:
-   - One-click `Copy to Prescription` copies a formatted EHR document directly to clipboard.
+4. **Bring Your Own API Key (BYOK)**:
+   - In-app modal accessible from the header (`🔑 API Keys`) to configure custom **Google Gemini** or **OpenAI** API keys.
+   - Keys are stored securely in browser `localStorage` and never logged on the server.
+   - Real-time **Verify Key** validation testing against live Gemini/OpenAI endpoints.
+   - Selectable LLM engine preference (Auto-Select, Google Gemini 2.5 Flash, or OpenAI GPT-4o).
+   - Graceful fallback: user custom keys &rarr; server `.env` keys &rarr; offline clinical heuristic parser.
+
+5. **Prescription & EHR Export**:
+   - One-click `Copy to Prescription` copies a formatted EHR document directly to clipboard with dedicated Prescription Medicines (Rx) section.
 
 ---
 
